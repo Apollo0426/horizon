@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Орлого Бүртгэлийн Систем</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #f4f6f8;
+      color: #333;
+    }
+
+    header {
+      background: #1e3a8a;
+      color: white;
+      padding: 15px;
+      text-align: center;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: auto;
+      padding: 20px;
+    }
+
+    .form-box {
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      margin-bottom: 10px;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
+    }
+
+    select, input {
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    button {
+      background: #1e3a8a;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1e40af;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid #eee;
+      text-align: center;
+    }
+
+    .summary {
+      margin-top: 15px;
+      background: white;
+      padding: 10px;
+      border-radius: 10px;
+    }
+
+    .delete-btn {
+      background: red;
+      color: white;
+      padding: 5px 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .add-item-box{
+      background:white;
+      padding:10px;
+      margin-bottom:15px;
+      border-radius:10px;
+      box-shadow:0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .item-list div{
+      padding:5px;
+      border-bottom:1px solid #eee;
+    }
+
+    .chart-box{
+      background:white;
+      padding:15px;
+      margin-top:15px;
+      border-radius:10px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h2>Орлого Бүртгэлийн Систем</h2>
+</header>
+
+<div class="container">
+
+  <div class="form-box">
+    <select id="category" onchange="updateProducts()">
+      <option value="">Төрөл</option>
+      <option value="game">Тоглоомын цаг</option>
+      <option value="drink">Ус, ундаа</option>
+      <option value="food">Ширхэгийн хоол</option>
+    </select>
+
+    <select id="product" onchange="setPrice()">
+      <option value="">Бүтээгдэхүүн</option>
+    </select>
+
+    <input type="number" id="qty" placeholder="Тоо ширхэг" />
+    <input type="number" id="price" placeholder="Үнэ" readonly />
+
+    <select id="payment">
+      <option value="Qpay">Qpay</option>
+      <option value="Cash">Бэлнээр</option>
+      <option value="POS">POS</option>
+    </select>
+
+    <button onclick="addItem()">Бүтээгдэхүүн нэмэх</button>
+    <button onclick="addOrder()">Хадгалах</button>
+    <button onclick="exportExcel()">Excel татах</button>
+  </div>
+
+  <div class="add-item-box">
+    <b>Нэмсэн бүтээгдэхүүнүүд:</b>
+    <div id="itemList" class="item-list"></div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Огноо</th>
+        <th>Бүтээгдэхүүн</th>
+        <th>Тоо</th>
+        <th>Үнэ</th>
+        <th>Нийт</th>
+        <th>Төлбөр</th>
+        <th>Устгах</th>
+      </tr>
+    </thead>
+    <tbody id="list"></tbody>
+  </table>
+
+  <div class="summary">
+    <p id="todayTotal"></p>
+    <p id="monthTotal"></p>
+  </div>
+
+  <div class="chart-box">
+    <canvas id="incomeChart"></canvas>
+  </div>
+
+  <div class="chart-box">
+    <canvas id="productChart"></canvas>
+  </div>
+
+</div>
+
+<script>
+const products = {
+  game: {"Early VIP":4500,"Early Hall":3500,"VIP":5000,"Hall":4000,"Nightpass":25000},
+  drink: {"Ус":1500,"Ундаа":3500,"Energy drink":5000},
+  food: {"Хоол":6000,"Хөнгөн хоол":4500}
+};
+
+let orders = JSON.parse(localStorage.getItem('orders')||'[]');
+orders = orders.map(o=>({...o,date:new Date(o.date)}));
+
+let currentItems = [];
+let incomeChart;
+let productChart;
+
+function save(){localStorage.setItem('orders',JSON.stringify(orders));}
+
+function updateProducts(){
+  const cat=document.getElementById('category').value;
+  const p=document.getElementById('product');
+  p.innerHTML='<option value="">Бүтээгдэхүүн</option>';
+
+  if(products[cat]){
+    Object.keys(products[cat]).forEach(x=>{
+      let o=document.createElement('option');
+      o.value=x;o.textContent=x;
+      p.appendChild(o);
+    });
+  }
+
+  document.getElementById('price').value='';
+}
+
+function setPrice(){
+  const cat=document.getElementById('category').value;
+  const prod=document.getElementById('product').value;
+  document.getElementById('price').value=products[cat]?.[prod]||0;
+}
+
+function addItem(){
+  const prod=document.getElementById('product').value;
+  const qty=parseInt(document.getElementById('qty').value||0);
+  const price=parseInt(document.getElementById('price').value||0);
+
+  if(!prod||!qty) return;
+
+  currentItems.push({prod,qty,price});
+  renderItems();
+}
+
+function renderItems(){
+  const box=document.getElementById('itemList');
+  box.innerHTML='';
+  currentItems.forEach(i=>{
+    let d=document.createElement('div');
+    d.textContent=`${i.prod} - ${i.qty} x ${i.price}`;
+    box.appendChild(d);
+  });
+}
+
+function addOrder(){
+  const pay=document.getElementById('payment').value;
+  if(currentItems.length===0) return;
+
+  const total=currentItems.reduce((s,i)=>s+i.qty*i.price,0);
+
+  orders.push({date:new Date(),items:currentItems,total,pay});
+  currentItems=[];
+  renderItems();
+
+  save();render();
+}
+
+function deleteOrder(i){orders.splice(i,1);save();render();}
+
+function render(){
+  const list=document.getElementById('list');list.innerHTML='';
+  let today=0,month=0,now=new Date();
+
+  orders.forEach((o,i)=>{
+    let names=o.items?o.items.map(x=>x.prod).join('+'):o.prod;
+    let qty=o.items?o.items.map(x=>x.qty).join('+'):o.qty;
+    let price=o.items?o.items.map(x=>x.price).join('+'):o.price;
+
+    let tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td>${o.date.toLocaleString()}</td>
+      <td>${names}</td>
+      <td>${qty}</td>
+      <td>${price}</td>
+      <td>${o.total}</td>
+      <td>${o.pay}</td>
+      <td><button class='delete-btn' onclick='deleteOrder(${i})'>X</button></td>
+    `;
+    list.appendChild(tr);
+
+    month+=o.total;
+    if(o.date.getDate()===now.getDate()) today+=o.total;
+  });
+
+  document.getElementById('todayTotal').innerText="Өнөөдөр: "+today;
+  document.getElementById('monthTotal').innerText="Нийт: "+month;
+
+  renderCharts();
+}
+
+function renderCharts(){
+  const incomeCtx=document.getElementById('incomeChart');
+  const productCtx=document.getElementById('productChart');
+
+  const incomeMap={};
+  const productMap={};
+
+  orders.forEach(o=>{
+    const d=o.date.toLocaleDateString();
+    incomeMap[d]=(incomeMap[d]||0)+o.total;
+
+    if(o.items){
+      o.items.forEach(i=>{
+        productMap[i.prod]=(productMap[i.prod]||0)+(i.qty*i.price);
+      });
+    }
+  });
+
+  if(incomeChart) incomeChart.destroy();
+  if(productChart) productChart.destroy();
+
+  incomeChart=new Chart(incomeCtx,{type:'bar',data:{labels:Object.keys(incomeMap),datasets:[{label:'Өдрийн орлого',data:Object.values(incomeMap)}]}});
+
+  productChart=new Chart(productCtx,{type:'bar',data:{labels:Object.keys(productMap),datasets:[{label:'Бүтээгдэхүүний борлуулалт',data:Object.values(productMap)}]}});
+}
+
+function exportExcel(){
+  if(!orders.length) return alert('Мэдээлэл алга');
+
+  let csv='Огноо,Бүтээгдэхүүн,Тоо,Үнэ,Нийт,Төлбөр\n';
+
+  orders.forEach(o=>{
+    const names=o.items?o.items.map(x=>x.prod).join('|'):'';
+    const qty=o.items?o.items.map(x=>x.qty).join('|'):'';
+    const price=o.items?o.items.map(x=>x.price).join('|'):'';
+
+    csv+=`${o.date.toLocaleString()},"${names}","${qty}","${price}",${o.total},${o.pay}\n`;
+  });
+
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='orlogo-burtgel.csv';
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+
+render();
+</script>
+
+</body>
+</html>
